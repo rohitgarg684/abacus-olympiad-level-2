@@ -229,7 +229,7 @@ function App() {
         </section>
 
         <footer className="welcome-footer">
-          <span>Level 2 · All 34 formula families</span>
+          <span>Level 2 · Balanced complement practice</span>
           <span>{BANK_SIZE.toLocaleString()} validated questions</span>
         </footer>
       </main>

@@ -64,7 +64,7 @@ function buildQuestionBank(): LevelTwoQuestion[] {
       total = nextTotal
     }
 
-    if (operands.length !== 5 || (!usesFiveFriend && !usesTenFriend)) continue
+    if (operands.length !== 5) continue
 
     const key = operands.join(',')
     if (seen.has(key)) continue
@@ -92,8 +92,8 @@ function buildQuestionBank(): LevelTwoQuestion[] {
 
 export const LEVEL_TWO_QUESTION_BANK = buildQuestionBank()
 
-export function selectOlympiadPaper(count = EXAM_LENGTH) {
-  const shuffled = [...LEVEL_TWO_QUESTION_BANK]
+function shuffle<T>(items: readonly T[]) {
+  const shuffled = [...items]
 
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const randomIndex = Math.floor(Math.random() * (index + 1))
@@ -103,5 +103,28 @@ export function selectOlympiadPaper(count = EXAM_LENGTH) {
     ]
   }
 
-  return shuffled.slice(0, Math.min(count, shuffled.length))
+  return shuffled
+}
+
+export function selectOlympiadPaper(count = EXAM_LENGTH) {
+  const targetMix: Record<FormulaFamily, number> = {
+    direct: 10,
+    'five-friend': 20,
+    'ten-friend': 30,
+    combined: 30,
+  }
+  const selected = (Object.keys(targetMix) as FormulaFamily[]).flatMap(
+    (family) =>
+      shuffle(
+        LEVEL_TWO_QUESTION_BANK.filter(
+          (question) => question.formulaFamily === family,
+        ),
+      ).slice(0, Math.round((targetMix[family] / EXAM_LENGTH) * count)),
+  )
+  const selectedIds = new Set(selected.map((question) => question.id))
+  const remaining = shuffle(
+    LEVEL_TWO_QUESTION_BANK.filter((question) => !selectedIds.has(question.id)),
+  )
+
+  return shuffle([...selected, ...remaining.slice(0, count - selected.length)])
 }
