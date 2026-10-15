@@ -4,7 +4,6 @@ import {
   ArrowRight,
   Check,
   Clock3,
-  Delete,
   Expand,
   Medal,
   RotateCcw,
@@ -29,6 +28,23 @@ const categories: Array<{ value: Category; age: string }> = [
   { value: 'C', age: '11–13 years' },
 ]
 
+function createAnswerChoices(question: LevelTwoQuestion) {
+  const choices = new Set<number>([question.answer])
+  const offsets = [1, -1, 2, -2, 3, -3, 5, -5, 10, -10]
+  let offsetIndex = Number(question.id.slice(-2)) % offsets.length
+
+  while (choices.size < 4) {
+    const candidate = question.answer + offsets[offsetIndex % offsets.length]
+    if (candidate >= 0 && candidate <= 45) choices.add(candidate)
+    offsetIndex += 1
+  }
+
+  return [...choices]
+    .map((value) => ({ value, sort: Math.random() }))
+    .sort((a, b) => a.sort - b.sort)
+    .map(({ value }) => value)
+}
+
 function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60)
   return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
@@ -39,6 +55,7 @@ function App() {
   const [studentName, setStudentName] = useState('')
   const [category, setCategory] = useState<Category>('A')
   const [paper, setPaper] = useState<LevelTwoQuestion[]>([])
+  const [answerChoices, setAnswerChoices] = useState<number[][]>([])
   const [answers, setAnswers] = useState<Array<string>>([])
   const [current, setCurrent] = useState(0)
   const [timeLeft, setTimeLeft] = useState(EXAM_SECONDS)
@@ -90,11 +107,10 @@ function App() {
     return () => window.clearInterval(timer)
   }, [screen, startedAt])
 
-  const updateDraft = (value: string) => {
-    if (!/^\d{0,2}$/.test(value)) return
+  const selectAnswer = (value: number) => {
     setAnswers((previous) => {
       const next = [...previous]
-      next[current] = value
+      next[current] = String(value)
       return next
     })
   }
@@ -116,8 +132,10 @@ function App() {
     if (screen !== 'exam' || showFinishPrompt) return
 
     const handleKey = (event: KeyboardEvent) => {
-      if (/^\d$/.test(event.key)) updateDraft(`${draft}${event.key}`)
-      if (event.key === 'Backspace') updateDraft(draft.slice(0, -1))
+      const choiceIndex = Number(event.key) - 1
+      if (choiceIndex >= 0 && choiceIndex < 4) {
+        selectAnswer(answerChoices[current][choiceIndex])
+      }
       if (event.key === 'Enter') submitAndContinue()
       if (event.key === 'ArrowLeft') moveTo(current - 1)
       if (event.key === 'ArrowRight') moveTo(current + 1)
@@ -130,6 +148,7 @@ function App() {
   const startExam = () => {
     const nextPaper = selectOlympiadPaper()
     setPaper(nextPaper)
+    setAnswerChoices(nextPaper.map(createAnswerChoices))
     setAnswers(Array(EXAM_LENGTH).fill(''))
     setCurrent(0)
     setTimeLeft(EXAM_SECONDS)
@@ -140,6 +159,7 @@ function App() {
 
   const restart = () => {
     setPaper([])
+    setAnswerChoices([])
     setAnswers([])
     setScreen('welcome')
   }
@@ -229,7 +249,7 @@ function App() {
         </section>
 
         <footer className="welcome-footer">
-          <span>Level 2 · Balanced complement practice</span>
+          <span>Level 2 · Multiple-choice practice format</span>
           <span>{BANK_SIZE.toLocaleString()} validated questions</span>
         </footer>
       </main>
@@ -238,34 +258,86 @@ function App() {
 
   if (screen === 'results') {
     const percentage = Math.round((score / EXAM_LENGTH) * 100)
+    const questionsToReview = paper
+      .map((item, index) => ({
+        ...item,
+        questionNumber: index + 1,
+        studentAnswer: answers[index],
+      }))
+      .filter(
+        (item) =>
+          item.studentAnswer === '' ||
+          Number(item.studentAnswer) !== item.answer,
+      )
+
     return (
       <main className="results-shell">
-        <section className="result-card">
-          <div className="result-trophy"><Trophy size={44} /></div>
-          <span className="eyebrow">Level 2 challenge complete</span>
-          <h1>{percentage >= 80 ? 'Outstanding focus!' : percentage >= 60 ? 'Strong attempt!' : 'Keep practising!'}</h1>
-          <p>{studentName} · Category {category}</p>
+        <div className="results-container">
+          <section className="result-card">
+            <div className="result-trophy"><Trophy size={44} /></div>
+            <span className="eyebrow">Level 2 challenge complete</span>
+            <h1>{percentage >= 80 ? 'Outstanding focus!' : percentage >= 60 ? 'Strong attempt!' : 'Keep practising!'}</h1>
+            <p>{studentName} · Category {category}</p>
 
-          <div className="score-ring" style={{ '--score': `${percentage * 3.6}deg` } as React.CSSProperties}>
-            <div><strong>{score}</strong><span>out of {EXAM_LENGTH}</span></div>
-          </div>
+            <div className="score-ring" style={{ '--score': `${percentage * 3.6}deg` } as React.CSSProperties}>
+              <div><strong>{score}</strong><span>correct out of {EXAM_LENGTH}</span></div>
+            </div>
 
-          <div className="result-stats">
-            <div><b>{percentage}%</b><span>Accuracy</span></div>
-            <div><b>{answeredCount}</b><span>Answered</span></div>
-            <div><b>{formatTime(elapsedSeconds)}</b><span>Time used</span></div>
-          </div>
+            <div className="result-stats">
+              <div><b>{score}</b><span>Correct</span></div>
+              <div><b>{questionsToReview.length}</b><span>Need review</span></div>
+              <div><b>{percentage}%</b><span>Accuracy</span></div>
+              <div><b>{formatTime(elapsedSeconds)}</b><span>Time used</span></div>
+            </div>
 
-          <div className="result-message">
-            <Check size={20} />
-            <span>A new practice creates a completely different 100-question paper.</span>
-          </div>
+            <div className="result-message">
+              <Check size={20} />
+              <span>A new practice creates a completely different 100-question paper.</span>
+            </div>
 
-          <button className="primary-button" onClick={startExam}>
-            <RotateCcw size={18} /> Try another paper
-          </button>
-          <button className="text-button" onClick={restart}>Change candidate details</button>
-        </section>
+            <button className="primary-button" onClick={startExam}>
+              <RotateCcw size={18} /> Try another paper
+            </button>
+            <button className="text-button" onClick={restart}>Change candidate details</button>
+          </section>
+
+          <section className="review-card">
+            <div className="review-heading">
+              <div>
+                <span>Answer review</span>
+                <h2>{questionsToReview.length ? 'Questions to practise' : 'Perfect paper!'}</h2>
+              </div>
+              <b>{questionsToReview.length}</b>
+            </div>
+
+            {questionsToReview.length === 0 ? (
+              <div className="perfect-message">
+                <Trophy size={28} />
+                Every answer was correct. Excellent work!
+              </div>
+            ) : (
+              <div className="review-list">
+                {questionsToReview.map((item) => (
+                  <article className="review-item" key={item.id}>
+                    <span className="review-number">Q{item.questionNumber}</span>
+                    <div className="review-sum">
+                      {item.operands.map((operand, index) => (
+                        <span key={`${item.id}-review-${index}`}>
+                          {index > 0 && operand > 0 ? '+' : ''}
+                          {operand < 0 ? `−${Math.abs(operand)}` : operand}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="review-answers">
+                      <span>Your answer <b className="wrong-answer">{item.studentAnswer || 'Not answered'}</b></span>
+                      <span>Correct answer <b className="correct-answer">{item.answer}</b></span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     )
   }
@@ -312,26 +384,26 @@ function App() {
                 ))}
               </div>
               <div className="sum-rule" />
-              <div className={draft ? 'answer-value has-answer' : 'answer-value'}>
-                {draft || '?'}
-              </div>
+              <div className="answer-value">?</div>
             </div>
           )}
           <p className="exam-hint">Add or subtract each row from top to bottom.</p>
         </div>
 
-        <aside className="keypad-zone">
-          <span className="keypad-label">Enter your answer</span>
-          <div className="answer-preview">{draft || <span>Tap a number</span>}</div>
-          <div className="keypad">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => (
-              <button key={number} onClick={() => updateDraft(`${draft}${number}`)}>{number}</button>
+        <aside className="choices-zone">
+          <span className="choices-label">Choose the correct answer</span>
+          <div className="answer-choices">
+            {answerChoices[current]?.map((choice, index) => (
+              <button
+                key={choice}
+                className={draft === String(choice) ? 'selected' : ''}
+                onClick={() => selectAnswer(choice)}
+              >
+                <span>{String.fromCharCode(65 + index)}</span>
+                <strong>{choice}</strong>
+                <i>{draft === String(choice) && <Check size={18} />}</i>
+              </button>
             ))}
-            <button className="clear-key" onClick={() => updateDraft('')}>Clear</button>
-            <button onClick={() => updateDraft(`${draft}0`)}>0</button>
-            <button aria-label="Delete last digit" onClick={() => updateDraft(draft.slice(0, -1))}>
-              <Delete size={24} />
-            </button>
           </div>
           <button className="primary-button confirm-button" disabled={!draft} onClick={submitAndContinue}>
             {current === EXAM_LENGTH - 1 ? 'Review & finish' : 'Confirm & continue'}
